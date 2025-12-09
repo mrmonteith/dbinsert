@@ -113,7 +113,8 @@ $stmt->execute();
 
 ### License
 
-This project is available under the **MIT License**. Add a `LICENSE` file with the standard MIT text and update the copyright line.
+This project is available under the **MIT License**. Add a `LICENSE` file with the standard 
+MIT text and update the copyright line.
 
 ---
 
