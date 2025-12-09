@@ -1,8 +1,3 @@
-Got it — thanks for clarifying. Here’s the **complete README** rewritten to include a dedicated **CRUD section** so anyone reading your repo sees how to use Insert, Update, Read, and Delete side‑by‑side. This version integrates everything we’ve scaffolded:
-
----
-
-```markdown
 # dbinsert / dbcrud
 
 A small PHP utility that centralizes database CRUD operations and logging using an OOP **trait**. Accepts associative arrays of `column => value` pairs, builds parameterized SQL, executes via PDO, and appends per‑operation log entries. Originally built as `DBInsertTrait`, now expanded into `DBCrudTrait` for full Create, Read, Update, Delete support.
