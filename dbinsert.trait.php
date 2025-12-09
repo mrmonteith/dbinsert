@@ -5,55 +5,89 @@
 //  *** Need to check for empty data in the function ***
 // Created: 4-15-2024
 // By: Michael Monteith
-trait DBInsertTrait {
-    public function DBInsertFunction( $name, $data, $table)
+
+
+// dbinsert.trait.php
+// Generic insert trait using parameterized queries and robust logging.
+
+trait DBInsertTrait
+{
+    /**
+     * Insert associative array $data into $table and log the operation.
+     * Returns 'SUCCESS' or 'FAIL: <reason>'.
+     */
+    public function DBInsertFunction(string $name, array $data, string $table): string
     {
-        require "config.php"; # Cannot be a require once 
-        //print_r($data); exit;				
-        $column_names = implode(", ", array_keys($data));	
-        $column_values = implode("', '", array_values($data));		
-        $query  = "INSERT INTO " . $servername . "." . $table . " (" . $column_names . ") VALUES ('" . $column_values . "')";
-        echo $query; 
-        exit;
+        // Basic validation
+        if (empty($data) || empty($table)) {
+            return 'FAIL: empty data or table';
+        }
 
-        //$servername = 'test';  // This is here to test if a PDO failure to check output
-        // mail('username@gmail.com', $labelname ' query', $query);
-        try
-        {
-            // *** Need to change the prepared statement to a proper PDO prepare for security reasons
-            $pdo = new PDO("odbc:Driver={IBM i Access ODBC Driver 64-bit}; System={$servername}; Database={$dbname};", $username, $password);
-            $stmt = $pdo->prepare($query); 
+        // Validate column names (simple whitelist: letters, numbers, underscore)
+        $columns = array_keys($data);
+        foreach ($columns as $col) {
+            if (!preg_match('/^[A-Za-z0-9_]+$/', $col)) {
+                $this->writeLog($name, "Invalid column name: {$col}");
+                return 'FAIL: invalid column name';
+            }
+        }
+
+        // Build placeholders and SQL
+        $placeholders = array_map(fn($c) => ':' . $c, $columns);
+        $sql = sprintf(
+            "INSERT INTO %s (%s) VALUES (%s)",
+            $table,
+            implode(', ', $columns),
+            implode(', ', $placeholders)
+        );
+
+        // Execute with prepared statement
+        try {
+            $pdo = $this->getPDO(); // provided by the class
+            $stmt = $pdo->prepare($sql);
+
+            foreach ($data as $col => $val) {
+                // bind nulls explicitly
+                if ($val === null) {
+                    $stmt->bindValue(':' . $col, null, PDO::PARAM_NULL);
+                } elseif (is_int($val)) {
+                    $stmt->bindValue(':' . $col, $val, PDO::PARAM_INT);
+                } else {
+                    $stmt->bindValue(':' . $col, (string)$val, PDO::PARAM_STR);
+                }
+            }
+
             $stmt->execute();
-            if($stmt->rowCount() == 1)
-                $result = "SUCCESS";
-        } catch(PDOException $e)
-        {
-            $error = "PDO Error: ". $e->getMessage();
-            $result = "FAIL   ";
-        }		
-        
-        if($stmt)
-        {		
-            $_SESSION['message_status'] = 1;					
-            $_SESSION['message'] = 'Your label has been sent to the printer.';				
-        }
-        else
-        {
-            echo"Error: ". $e->getMessage();	// Might be able to add it to the tail of the session message below instead			
-            $_SESSION['message_status'] = 0;					
-            $_SESSION['message'] = 'Your label has <strong>NOT</strong> been sent to the printer.';				
+            $result = ($stmt->rowCount() >= 1) ? 'SUCCESS' : 'FAIL: no rows affected';
+        } catch (PDOException $e) {
+            $this->writeLog($name, "PDO Error: " . $e->getMessage());
+            return 'FAIL: PDO exception';
         }
 
-        // Write to a log file so we can use for looking up issues later
-        date_default_timezone_set('America/New_York');
-        $today = date("Y-m-d h:i:s A T ");
-        $rootPath = $_SERVER['DOCUMENT_ROOT']; // Makes the path relative with where scripts are installed
-        file_put_contents($rootPath . '/logs/' . $name . '.log', $today . "- " . $result . " - " . $query . "\r\n", FILE_APPEND);
-        
-        if($error != NULL)
-            file_put_contents($rootPath . '/logs/' . $name . '.log', $today . "- " . $error  . "\r\n", FILE_APPEND);
+        // Session messages (caller must have started session if needed)
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION['message_status'] = ($result === 'SUCCESS') ? 1 : 0;
+            $_SESSION['message'] = ($result === 'SUCCESS') ? 'Insert succeeded.' : 'Insert failed.';
+        }
 
-        $pdo = NULL;  // *** Close Database Connection ***
-        return $result; // 
+        // Log SQL and result (do not log sensitive values)
+        $this->writeLog($name, $result . " - " . $sql);
+
+        return $result;
     }
+
+    // Helper: write to log file (class must provide getLogPath())
+    protected function writeLog(string $name, string $message): void
+    {
+        $logPath = method_exists($this, 'getLogPath') ? $this->getLogPath() : (__DIR__ . DIRECTORY_SEPARATOR . 'logs');
+        if (!is_dir($logPath)) {
+            @mkdir($logPath, 0755, true);
+        }
+        $today = (new DateTime('now', new DateTimeZone('America/New_York')))->format('Y-m-d H:i:s T');
+        $entry = $today . ' - ' . $message . PHP_EOL;
+        @file_put_contents(rtrim($logPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $name . '.log', $entry, FILE_APPEND);
+    }
+
+    // The trait expects the using class to implement getPDO(): PDO
+    abstract protected function getPDO(): PDO;
 }

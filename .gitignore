@@ -1,0 +1,6 @@
+# Ignore local configuration file containing secrets
+config.php
+
+# Optional: ignore any environment-specific config files
+*.local.php
+.env
